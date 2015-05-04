@@ -49,4 +49,4 @@ PosLLH(Sync1=181, Sync2=98, clsID=1, msgID=2, payloadLength=28, iTOW=309742000, 
 ```
 
 ### Documentation
-See the [wiki](/wiki) for detailed documentation.
+See the [wiki](https://github.com/bennierex/Python-Navio/wiki) for detailed documentation.
