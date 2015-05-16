@@ -10,11 +10,11 @@ There are several (mayor) bugs still to fix and functionality to add, so please 
 ### Installing ###
 ```bash
 $ sudo apt-get update
-$ sudo apt-get install python-dev
+$ sudo apt-get install python3-dev build-essential
 $ wget https://github.com/bennierex/Python-Navio/archive/master.zip
 $ unzip ./master.zip
 $ cd ./Python-Navio-master
-$ python setup.py install
+$ python3 setup.py install
 ```
 
 ### Basic usage ###
@@ -22,8 +22,8 @@ $ python setup.py install
 >>> import navio
 >>> nio = navio.Navio()
 
->>> nio.IMU_get_motion9()
-((0.74267578125, 0.60009765625, -0.2841796875), (5.060975551605225, 0.6097561120986938, -1.8902438879013062), (0.0, 0.0, 0.0))
+>>> nio.IMU_get_motion6()
+((0.74267578125, 0.60009765625, -0.2841796875), (5.060975551605225, 0.6097561120986938, -1.8902438879013062))
 
 >>> nio.PWM_set_led(255,0,0)    # set LED to full brightness red
 
@@ -34,6 +34,10 @@ $ python setup.py install
 1
 >>> nio.FRAM_read(0, 7)
 b'abcdefg'
+
+>>> nio.PPM_enable()
+>>> nio.PPM_read()
+[1023, 1023, 351, 1023, 1695, 1695, 1695, 1695, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1, 1, 0, 0, 0, 0, 0, 0]
 
 >>> from navio import UBX_MSG_NAV_POSLLH
 >>> import struct
