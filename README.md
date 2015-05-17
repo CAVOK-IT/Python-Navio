@@ -1,7 +1,7 @@
 Python-Navio
 ============
 
-Python extension for the [Navio shield](http://www.emlid.com/) for [Raspberry Pi](http://www.raspberrypi.org/).
+Python3 extension for the [Navio shield](http://www.emlid.com/) for [Raspberry Pi](http://www.raspberrypi.org/).
 
 ## Important!!! ##
 This extension is in pre-alpha state. It is in no way stable and guaranteed to work correctly. Please use at your own risk!
