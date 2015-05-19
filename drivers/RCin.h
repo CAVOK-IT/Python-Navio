@@ -63,9 +63,11 @@ class BaseScanner
 
     virtual void reset() = 0;
     virtual int8_t update(int, uint32_t) = 0;
-    virtual bool parseFrame(uint16_t*) = 0;
+    virtual void parseFrame(uint16_t*) = 0;
+    virtual void getRawFrame(uint16_t*) = 0;
 
-    static const uint8_t    OUT_BUFF_SIZE   =  32;
+    static const uint8_t    OUT_BUFF_SIZE   =  25;
+    uint8_t channels_in_frame;
     enum State {
         Sync,
         Frame,
@@ -74,8 +76,36 @@ class BaseScanner
     };
 
   protected:
-    uint8_t _buffer[OUT_BUFF_SIZE];
+    uint16_t _buffer[OUT_BUFF_SIZE];
 };
+
+class PPMscanner : public BaseScanner
+{
+  public:
+    PPMscanner();
+    ~PPMscanner();
+
+    void reset();
+    int8_t update(int level, uint32_t tick);
+    void parseFrame(uint16_t* out_data);
+    void getRawFrame(uint16_t* out_data);
+
+    static const uint8_t    MAX_CHAN          =    8;
+    State state;
+
+  protected:
+    static const uint16_t   SYNC_PERIOD       = 2700;
+    static const uint16_t   MIN_PULSE_WIDTH   = 1000;
+    static const uint16_t   MAX_PULSE_WIDTH   = 2000;
+
+    uint32_t _previousTick;
+    uint8_t _chan_num;              // channel number in PPM frame
+};
+
+namespace PPMparser
+{
+    bool parseFrame(uint16_t* in_data, uint16_t* out_data, uint8_t number_of_channels);
+}
 
 class SBUSscanner : public BaseScanner
 {
@@ -85,15 +115,16 @@ class SBUSscanner : public BaseScanner
 
     void reset();
     int8_t update(int level, uint32_t tick);
-    bool parseFrame(uint16_t* out_data);
+    void parseFrame(uint16_t* out_data);
+    void getRawFrame(uint16_t* out_data);
 
     State state;
 
   protected:
-    static const uint16_t  SYNC_PERIOD              = 3300;
-    static const uint8_t   PULSE_SYNC_GRACE_PERIOD  =    1;
-    static const uint8_t   FRAME_LENGTH             =   25;
-    static const uint8_t   BYTE_LENGTH              =   12;
+    static const uint16_t   SYNC_PERIOD              = 3300;
+    static const uint8_t    PULSE_SYNC_GRACE_PERIOD  =    1;
+    static const uint8_t    FRAME_LENGTH             =   25;
+    static const uint8_t    BYTE_LENGTH              =   12;
 
     uint32_t _previousTick;
     uint16_t _frame[FRAME_LENGTH]; // raw bytes, including start-, parity- and stop-bits
@@ -104,40 +135,25 @@ class SBUSscanner : public BaseScanner
 
 namespace SBUSparser
 {
-    bool parseFrame(uint8_t* in_data, uint16_t* out_data);
+    bool parseFrame(uint16_t* in_data, uint16_t* out_data);
 }
 
 
-class BaseRCin
+class RCin
 {
   public:
-    virtual ~BaseRCin() {}
-
-    virtual bool initialize() = 0;
-    virtual void _feed(int, uint32_t) = 0;
-    virtual bool enable() = 0;
-    virtual bool disable() = 0;
-    virtual void registerCallback(cb_func) = 0;
-    virtual void readChannels(uint16_t*) = 0;
-
-    static const uint8_t OUTDATA_BUFFER_SIZE = 24;
-};
-
-
-class RCin : public BaseRCin
-{
-  public:
-    RCin(int scanner_type = SCANNER_TYPE_PPM, uint8_t gpio_in = 4, uint8_t samplerate = 5);
+    RCin(int scanner_type = SCANNER_TYPE_PPM, bool output_raw_data = false, uint8_t gpio_in = 4, uint8_t samplerate = 5);
     ~RCin();
 
     bool initialize();
     static void feed(int gpio, int level, uint32_t tick, void* self);
     void _feed(int level, uint32_t tick);
-    bool enable();
+    bool enable(uint8_t number_of_channels = 0);
     bool disable();
     void registerCallback(cb_func callback);
     void readChannels(uint16_t* channel_data);
 
+    static const uint8_t OUTDATA_BUFFER_SIZE = 24;
     bool is_initialized;
 
   protected:
@@ -146,6 +162,7 @@ class RCin : public BaseRCin
     pthread_mutex_t outdata_lock;
     uint8_t _input_gpio;
     uint8_t _sample_rate;
+    bool _raw_data_output;
     uint16_t _outdata_buff[OUTDATA_BUFFER_SIZE];
 };
 

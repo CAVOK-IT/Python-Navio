@@ -75,7 +75,8 @@
 #define BIT_COMPONENTS_ALL           127    // default
 
 #define RC_MODE_PPM                    1    // default
-#define RC_MODE_SBUS                   2
+#define RC_MODE_PPM_RAW                2
+#define RC_MODE_SBUS                   3
 
 #define UBX_MSG_RECV_BUFF_LENGTH    2048
 

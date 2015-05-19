@@ -33,9 +33,12 @@
 
 namespace PPMparser
 {
-    bool parseFrame(uint8_t* in_data, uint16_t* out_data)
+    bool parseFrame(uint16_t* in_data, uint16_t* out_data, uint8_t number_of_channels)
     {
-        //TODO
+        for (size_t i=0; i<number_of_channels; i++) {
+            out_data[i] = in_data[i];
+        }
+
         return true;
     }
 }
@@ -43,11 +46,8 @@ namespace PPMparser
 
 namespace SBUSparser
 {
-    bool parseFrame(uint8_t* in_data, uint16_t* out_data)
+    bool parseFrame(uint16_t* in_data, uint16_t* out_data)
     {
-        //uint16_t channels[18];
-        //static uint8_t cnt = 0;
-
         // Check start-byte
         if(in_data[0] != 0xF0) {
             return false;
@@ -84,6 +84,99 @@ namespace SBUSparser
 
         return true;
     }
+}
+
+
+PPMscanner::PPMscanner()
+{
+    _previousTick = 0;
+    reset();
+}
+
+PPMscanner::~PPMscanner()
+{
+
+}
+
+void PPMscanner::reset()
+{
+    if (channels_in_frame == 0) {
+        channels_in_frame = MAX_CHAN;
+    }
+    else {
+        channels_in_frame = std::min(MAX_CHAN, channels_in_frame);
+    }
+    std::fill_n(_buffer, OUT_BUFF_SIZE, 0); // reset output buffer to 0
+    _chan_num = 0;
+    state = Sync;
+}
+
+int8_t PPMscanner::update(int level, uint32_t tick)
+{
+    if(level < 0) {
+        // some kind of error occurred
+        reset();
+    }
+
+    uint32_t deltaTime = tick - _previousTick;
+    _previousTick = tick;
+
+    switch (state) {
+        case Sync:
+            if(level == 1 && deltaTime >= SYNC_PERIOD) {   // expect start of new frame
+                state = Frame;
+            }
+            else {
+                reset();
+            }
+            break;
+
+        case Frame:
+            if (level == 1) {
+                if (deltaTime < MIN_PULSE_WIDTH || deltaTime > MAX_PULSE_WIDTH) {
+                    // lost sync
+                    reset();
+                }
+                else {
+                    _buffer[_chan_num] = (uint16_t)deltaTime;
+                    _chan_num++;
+                    if (_chan_num == channels_in_frame) {
+                        state = Done;
+                    }
+                }
+            }
+            break;
+
+        case Done:
+            break;
+
+        case Error:
+        default:
+            reset();
+            break;
+    }
+
+    return state;
+}
+
+void PPMscanner::parseFrame(uint16_t* out_data)
+{
+    if (!state == Done) {
+        // Shouldn't be here
+        return;
+    }
+
+    PPMparser::parseFrame(_buffer, out_data, channels_in_frame);
+}
+
+void PPMscanner::getRawFrame(uint16_t* out_data)
+{
+    if (state != Done) {
+        // Shouldn't be here
+        return;
+    }
+
+    memcpy(out_data, _buffer, (channels_in_frame * sizeof(*_buffer)));
 }
 
 
@@ -152,7 +245,6 @@ int8_t SBUSscanner::update(int level, uint32_t tick)
                 // Assume we have received a full frame here. We take the remaining parity- and two stop-bits for granted, because
                 // we will not receive a notification again until the next frame starts.
 
-                //uint8_t sbus_bytes[FRAME_LENGTH];
                 for(size_t i=0; i<FRAME_LENGTH; i++) {
                     // check start-bit
                     if(!(_frame[i] & 1)) {
@@ -163,7 +255,7 @@ int8_t SBUSscanner::update(int level, uint32_t tick)
                         reset();
                     }
 
-                    _buffer[i] = (uint8_t)((_frame[i] >> 1) & 0x00FF);
+                    _buffer[i] = ((_frame[i] >> 1) & 0x00FF);
 
                     // check parity-bit (even)
                     bool parity = ParityTable256[_buffer[i]];
@@ -188,21 +280,32 @@ int8_t SBUSscanner::update(int level, uint32_t tick)
     return state;
 }
 
-bool SBUSscanner::parseFrame(uint16_t* out_data)
+void SBUSscanner::parseFrame(uint16_t* out_data)
 {
-    if (!state == Done) {
-        return false;
+    if (state != Done) {
+        // Shouldn't be here
+        return;
     }
 
-    return SBUSparser::parseFrame(_buffer, out_data);
+    SBUSparser::parseFrame(_buffer, out_data);
+}
+
+void SBUSscanner::getRawFrame(uint16_t* out_data)
+{
+    if (state != Done) {
+        // Shouldn't be here
+        return;
+    }
+
+    memcpy(out_data, _buffer, (FRAME_LENGTH * sizeof(*_buffer)));
 }
 
 
-RCin::RCin(int scanner_type, uint8_t gpio_in, uint8_t samplerate)
+RCin::RCin(int scanner_type, bool raw_output, uint8_t gpio_in, uint8_t samplerate)
 {
     switch (scanner_type) {
         case SCANNER_TYPE_PPM:
-            //_scanner = new PPMscanner();
+            _scanner = new PPMscanner();
             break;
 
         case SCANNER_TYPE_SBUS:
@@ -214,6 +317,7 @@ RCin::RCin(int scanner_type, uint8_t gpio_in, uint8_t samplerate)
         break;
     }
 
+    _raw_data_output = raw_output;
     _input_gpio = gpio_in;
     _sample_rate = samplerate;
 
@@ -231,22 +335,17 @@ RCin::~RCin()
 
 bool RCin::initialize()
 {
-    if (is_initialized) {
-        return true;
-    }
-
-    if (gpioCfgClock(_sample_rate, PI_DEFAULT_CLK_PERIPHERAL, 0) == 0) {
+    if (!is_initialized && gpioCfgClock(_sample_rate, PI_DEFAULT_CLK_PERIPHERAL, 0) == 0) {
         if (gpioInitialise() >= 0) {
             if (gpioSetMode(_input_gpio, PI_INPUT) == 0) {
                 if (gpioSetPullUpDown(_input_gpio, PI_PUD_DOWN) == 0) {
                     is_initialized = true;
-                    return true;
                 }
             }
         }
     }
 
-    return false;
+    return is_initialized;
 }
 
 extern "C" void RCin::feed(int gpio, int level, uint32_t tick, void* self)
@@ -266,19 +365,26 @@ void RCin::_feed(int level, uint32_t tick)
         pthread_mutex_lock(&outdata_lock);
             // clear the buffer first
             memset(_outdata_buff, 0, (OUTDATA_BUFFER_SIZE * sizeof(*_outdata_buff)));
-            _scanner->parseFrame(_outdata_buff);
-        pthread_mutex_unlock(&outdata_lock);
+            if (_raw_data_output) {
+                _scanner->getRawFrame(_outdata_buff);
+            }
+            else {
+                _scanner->parseFrame(_outdata_buff);
+            }
 
-        // if (_cb) {
-        //     _cb(_outdata_buff);
-        // }
+            // Call callback if set
+            if (_cb) {
+                _cb(_outdata_buff);
+            }
+        pthread_mutex_unlock(&outdata_lock);
 
         _scanner->reset();
     }
 }
 
-bool RCin::enable()
+bool RCin::enable(uint8_t number_of_channels)
 {
+    _scanner->channels_in_frame = number_of_channels;
     _scanner->reset();
     return !gpioSetAlertFuncEx(_input_gpio, feed, this);
 }
@@ -299,65 +405,3 @@ void RCin::readChannels(uint16_t* channel_data)
         memcpy(channel_data, _outdata_buff, (OUTDATA_BUFFER_SIZE * sizeof(*_outdata_buff)));
     pthread_mutex_unlock(&outdata_lock);
 }
-
-/*
-int main(int argc, char *argv[])
-{
-    BaseRCin* in = new RCin(SCANNER_TYPE_SBUS);
-
-    if (in->initialize()) {
-        printf("Initialized.\n");
-    }
-    else {
-        printf("Error initilizing!\n");
-    }
-
-    if (in->enable()) {
-        printf("Enabled.\n");
-    }
-    else {
-        printf("Error enabling!\n");
-    }
-
-    for (size_t i=0; i<100; i++) {
-        uint16_t testbuff[24] = {};
-        in->readChannels(testbuff);
-        for (size_t ii=0; ii<24; ii++) {
-            printf("%d\t", testbuff[ii]);
-        }
-        printf("\n");
-        usleep(5000);
-    }
-
-    if (in->disable()) {
-        printf("Disabled.\n");
-    }
-    else {
-        printf("Error disabling!\n");
-    }
-
-    sleep(2);
-
-    if (in->enable()) {
-        printf("Enabled.\n");
-    }
-    else {
-        printf("Error enabling!\n");
-    }
-
-    sleep(2);
-
-    if (in->disable()) {
-        printf("Disabled.\n");
-    }
-    else {
-        printf("Error disabling!\n");
-    }
-
-    printf("Finished.\n");
-
-    if (in) delete in;
-
-    return 0;
-}
-*/

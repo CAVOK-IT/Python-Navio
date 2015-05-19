@@ -31,10 +31,14 @@
 #include "navio.h"
 
 // Exceptions
-static PyObject *InitializationException;
-static PyObject *ConnectionException;
+static PyObject* InitializationException;
+static PyObject* ConnectionException;
 
+// Callback function pointers
+static PyObject* PPM_callback = 0;
+static PyObject* GPS_callback = 0;
 
+// Typedef
 typedef struct {
     PyObject_HEAD
 
@@ -45,13 +49,13 @@ typedef struct {
 
     bool is_initialized;
 
-    Ublox* gps;                 /* GPS  */
-    MPU9250* imu;               /* IMU  */
-    MS5611* baro;               /* baro */
-    PCA9685* pwm;               /* PWM  */
-    ADS1115* adc;               /* ADC  */
-    MB85RC04* fram;             /* FRAM */
-    BaseRCin* ppm;              /* PPM  */
+    Ublox* gps;     /* GPS  */
+    MPU9250* imu;   /* IMU  */
+    MS5611* baro;   /* baro */
+    PCA9685* pwm;   /* PWM  */
+    ADS1115* adc;   /* ADC  */
+    MB85RC04* fram; /* FRAM */
+    RCin* ppm;      /* PPM  */
 } Navio;
 
 // BEGIN GPS
@@ -872,14 +876,21 @@ Navio_FRAM_test(Navio* self)
 
 // BEGIN PPM
 static PyObject *
-Navio_PPM_enable(Navio* self)
+Navio_PPM_enable(Navio* self, PyObject *args, PyObject *kwds)
 {
     if (!(self->is_initialized && self->ppm)) {
         PyErr_SetString(PyExc_IOError, "Navio not initialized and/or PPM unavailable.");
         return NULL;
     }
 
-    self->ppm->enable();
+    uint8_t number_of_channels = 0;
+
+    static char *kwlist[] = {(char *)"number_of_channels", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|B", kwlist, &number_of_channels)) {
+        return NULL;
+    }
+
+    self->ppm->enable(number_of_channels);
 
     Py_INCREF(Py_None);
     return Py_None;
@@ -899,9 +910,68 @@ Navio_PPM_disable(Navio* self)
     return Py_None;
 }
 
-static PyObject *
-Navio_PPM_register_callback(Navio* self, PyObject *args)
+// PPM_callback wrapper
+static void
+PPM_callback_wrapper(uint16_t* channel_buffer)
 {
+    if (!PPM_callback) {
+        return;
+    }
+
+    // Acquire the GIL
+    PyGILState_STATE gstate = PyGILState_Ensure();
+        PyObject* channel_data = PyList_New(RCin::OUTDATA_BUFFER_SIZE);
+        if (channel_data) {
+            for (ssize_t i=0; i<RCin::OUTDATA_BUFFER_SIZE; i++) {
+                PyList_SET_ITEM(channel_data, i, PyLong_FromUnsignedLong(channel_buffer[i]));
+            }
+            PyObject* args = Py_BuildValue("(N)", channel_data);    // PyObject_CallObject actually needs a tuple as *args
+            if (args) {
+                PyObject* result = PyObject_CallObject(PPM_callback, args);
+                Py_DECREF(args);
+                Py_XDECREF(result);
+            }
+
+            Py_DECREF(channel_data);
+        }
+    PyGILState_Release(gstate);
+    // GIL released
+}
+
+static PyObject *
+Navio_PPM_register_callback(Navio* self, PyObject* args)
+{
+    if (!(self->is_initialized && self->ppm)) {
+        PyErr_SetString(PyExc_IOError, "Navio not initialized and/or PPM unavailable.");
+        return NULL;
+    }
+
+    PyObject* temp;
+
+    if (!PyArg_ParseTuple(args, "O:PPM_register_callback", &temp)) {
+        return NULL;
+    }
+
+    // Disable PPM reading while we set this up.
+    self->ppm->disable();
+
+    if (temp == Py_None) {
+        self->ppm->registerCallback(NULL);
+        Py_XDECREF(PPM_callback);   /* Dispose of previous callback */
+        PPM_callback = 0;
+    }
+    else {
+        if (!PyCallable_Check(temp)) {
+            PyErr_SetString(PyExc_TypeError, "Parameter must be callable.");
+            return NULL;
+        }
+        Py_XINCREF(temp);           /* Add a reference to new callback */
+        Py_XDECREF(PPM_callback);   /* Dispose of previous callback */
+        PPM_callback = temp;        /* Remember new callback */
+
+        self->ppm->registerCallback(PPM_callback_wrapper);
+    }
+
     Py_INCREF(Py_None);
     return Py_None;
 }
@@ -910,10 +980,11 @@ static PyObject *
 Navio_PPM_read(Navio* self)
 {
     PyObject* channel_data = PyList_New(RCin::OUTDATA_BUFFER_SIZE);
-    uint16_t channel_buffer[RCin::OUTDATA_BUFFER_SIZE] = {0};
-    self->ppm->readChannels(channel_buffer);
-
     if (channel_data) {
+        uint16_t channel_buffer[RCin::OUTDATA_BUFFER_SIZE] = {0};
+
+        self->ppm->readChannels(channel_buffer);
+
         for (ssize_t i=0; i<RCin::OUTDATA_BUFFER_SIZE; i++) {
             PyList_SET_ITEM(channel_data, i, PyLong_FromUnsignedLong(channel_buffer[i]));
         }
@@ -1015,7 +1086,7 @@ static PyMethodDef Navio_methods[] = {
      "Perform FRAM read/write test."
     },
 
-    {"PPM_enable", (PyCFunction)Navio_PPM_enable, METH_NOARGS,
+    {"PPM_enable", (PyCFunction)Navio_PPM_enable, METH_VARARGS|METH_KEYWORDS,
      "Enable reading from PPM input."
     },
     {"PPM_disable", (PyCFunction)Navio_PPM_disable, METH_NOARGS,
@@ -1031,13 +1102,40 @@ static PyMethodDef Navio_methods[] = {
     {NULL}  /* Sentinel */
 };
 
+static void cleanup(Navio *self)
+{
+    //n = (Navio *)self;
+    // if (self.gps)
+    //     delete self.gps;
+    // if (self.imu)
+    //     delete self.imu;
+    // if (self->baro)
+    //     delete self.baro;
+    // if (self.pwm)
+    //     delete self.pwm;
+    // if (self.adc)
+    //     delete self.adc;
+    // if (self.fram)
+    //     delete self.fram;
+    // if (self.ppm)
+    //     delete self.ppm;
+}
+
 static PyObject *
 Navio_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
-    static Navio *self = NULL;  /* static to create a Singleton */
+    static Navio *self = 0;  /* static to create a Singleton */
 
     if (!self) {
         self = (Navio *)type->tp_alloc(type, 0);
+
+        self->gps   = 0;
+        self->imu   = 0;
+        self->baro  = 0;
+        self->pwm   = 0;
+        self->adc   = 0;
+        self->fram  = 0;
+        self->ppm   = 0;
 
         self->is_initialized = false;
     }
@@ -1087,85 +1185,110 @@ Navio_init(Navio *self, PyObject *args, PyObject *kwds)
         }
 
         if ((self->enabled_components & BIT_COMPONENTS_GPS) != 0) {
-            self->gps = new Ublox();
-            //return PyErr_NoMemory();
+            try {
+                self->gps = new Ublox();
+            }
+            catch (std::bad_alloc) {
+                goto AllocErr;
+            }
             if (!self->gps->testConnection()) {
                 PyErr_SetString(InitializationException, "Unable to communicate with Ublox (GPS).");
-                // delete self->gps;
-                //self->gps = NULL;
-                return -1;
+                goto InitErr;
             }
         }
         if ((self->enabled_components & BIT_COMPONENTS_IMU) != 0) {
-            self->imu = new MPU9250();
-            //return PyErr_NoMemory();
+            try {
+                self->imu = new MPU9250();
+            }
+            catch (std::bad_alloc) {
+                goto AllocErr;
+            }
             self->imu->initialize();
             if (!self->imu->testConnection()) {
                 PyErr_SetString(InitializationException, "Unable to communicate with MPU9250 (IMU).");
-                // delete self->imu;
-                //self->imu = NULL;
-                return -1;
+                goto InitErr;
             }
         }
         if ((self->enabled_components & BIT_COMPONENTS_BARO) != 0) {
-            self->baro = new MS5611(i2c_addr);
-            //return PyErr_NoMemory();
+            try {
+                self->baro = new MS5611(i2c_addr);
+            }
+            catch (std::bad_alloc) {
+                goto AllocErr;
+            }
             self->baro->initialize();
             if (!self->baro->testConnection()) {
                 PyErr_SetString(InitializationException, "Unable to communicate with MS5611 (baro).");
-                // delete self->baro;
-                //self->baro = NULL;
-                return -1;
+                goto InitErr;
             }
         }
         if ((self->enabled_components & BIT_COMPONENTS_PWM) != 0) {
-            self->pwm = new PCA9685(i2c_addr);
-            //return PyErr_NoMemory();
+            try {
+                self->pwm = new PCA9685(i2c_addr);
+            }
+            catch (std::bad_alloc) {
+                goto AllocErr;
+            }
             self->pwm->initialize();
             if (!self->pwm->testConnection()) {
                 PyErr_SetString(InitializationException, "Unable to communicate with PCA9685 (PWM).");
-                // delete self->pwm;
-                //self->pwm = NULL;
-                return -1;
+                goto InitErr;
             }
         }
         if ((self->enabled_components & BIT_COMPONENTS_ADC) != 0) {
-            self->adc = new ADS1115(i2c_addr);
-            //return PyErr_NoMemory();
+            try {
+                self->adc = new ADS1115(i2c_addr);
+            }
+            catch (std::bad_alloc) {
+                goto AllocErr;
+            }
             if (!self->adc->testConnection()) {
                 PyErr_SetString(InitializationException, "Unable to communicate with ADS1115 (ADC).");
-                // delete self->adc;
-                //self->adc = NULL;
-                return -1;
+                goto InitErr;
             }
         }
         if ((self->enabled_components & BIT_COMPONENTS_FRAM) != 0) {
-            self->fram = new MB85RC04(i2c_addr);
-            //return PyErr_NoMemory();
+            try {
+                self->fram = new MB85RC04(i2c_addr);
+            }
+            catch (std::bad_alloc) {
+                goto AllocErr;
+            }
             if (!self->fram->testConnection()) {
                 PyErr_SetString(InitializationException, "Unable to communicate with FRAM.");
-                // delete self->fram;
-                //self->fram = NULL;
-                return -1;
+                goto InitErr;
             }
         }
         if ((self->enabled_components & BIT_COMPONENTS_PPM) != 0) {
-            switch (self->rc_input_signal) {
-                case RC_MODE_PPM:
-                    self->ppm = new RCin(SCANNER_TYPE_PPM);
-                    break;
-                case RC_MODE_SBUS:
-                    self->ppm = new RCin(SCANNER_TYPE_SBUS);
-                    break;
-                default:
-                    PyErr_SetString(PyExc_ValueError, "Invalid signal type specified.");
-                    return -1;
+            try {
+                bool rawdata = (self->rc_input_signal == RC_MODE_PPM_RAW);
+                switch (self->rc_input_signal) {
+                    case RC_MODE_PPM:
+                    case RC_MODE_PPM_RAW:
+                        self->ppm = new RCin(SCANNER_TYPE_PPM, rawdata);
+                        break;
+                    case RC_MODE_SBUS:
+                        self->ppm = new RCin(SCANNER_TYPE_SBUS);
+                        break;
+                    default:
+                        PyErr_SetString(PyExc_ValueError, "Invalid signal type specified.");
+                        goto InitErr;
+                }
+            }
+            catch (std::bad_alloc) {
+                goto AllocErr;
             }
 
             if (!self->ppm->initialize()) {
                 PyErr_SetString(InitializationException, "Unable to initialize GPIO for PPM input.");
-                return -1;
+                goto InitErr;
             }
+        }
+
+        // Make sure the GIL has been created since we need to acquire it in our
+        // callbacks to safely call into the python interpreter.
+        if (!PyEval_ThreadsInitialized()) {
+            PyEval_InitThreads();
         }
 
         self->is_initialized = true;
@@ -1175,31 +1298,25 @@ Navio_init(Navio *self, PyObject *args, PyObject *kwds)
         return 0;
     }
     else {
-        return -1;
+        goto InitErr;
     }
+
+InitErr:
+    cleanup(self);
+    return -1;
+AllocErr:
+    cleanup(self);
+    PyErr_NoMemory();
+    return -1;
 }
 
 static void
-Navio_dealloc(PyObject *self)
+Navio_dealloc(Navio *self)
 {
-    // if (self.gps)
-    //     delete self.gps;
-    // if (self.imu)
-    //     delete self.imu;
-    // if (self.baro)
-    //     delete self.baro;
-    // if (self.pwm)
-    //     delete self.pwm;
-    // if (self.adc)
-    //     delete self.adc;
-    // if (self.fram)
-    //     delete self.fram;
-    // if (self.ppm)
-    //     delete self.ppm;
-
+    cleanup(self);
     Py_TYPE(self)->tp_free((PyObject*)self);
 
-    self = NULL;
+    //self = NULL;
 }
 
 static PyTypeObject NavioType = {
@@ -1301,6 +1418,7 @@ PyInit_navio(void)
 
     // RC input
     PyModule_AddIntMacro(m, RC_MODE_PPM);
+    PyModule_AddIntMacro(m, RC_MODE_PPM_RAW);
     PyModule_AddIntMacro(m, RC_MODE_SBUS);
 
     // ADC config

@@ -1,7 +1,14 @@
 Python-Navio
 ============
 
-Python3 extension for the [Navio shield](http://www.emlid.com/) for [Raspberry Pi](http://www.raspberrypi.org/).
+Python3 extension for the [Navio(+) shield](http://www.emlid.com/) for [Raspberry Pi](http://www.raspberrypi.org/).
+
+Python-Navio aims to be an easy to use, yet powerful, interface to the Navio(+) shield for the Raspberry Pi. It uses
+some functions specific to Python >= 3.2, so ymmv on other versions.
+For testing, you might want to use a virtualenv to not mess with the global Python installation. See [virtualenv](https://virtualenv.pypa.io/en/latest/)
+and [virtualenvwrapper](https://virtualenvwrapper.readthedocs.org/en/latest/) on how to accomplish that.
+There are interfaces that require root-access to the hardware, so you must run the python interpreter with elevated
+privileges (`sudo`).
 
 ## Important!!! ##
 This extension is in pre-alpha state. It is in no way stable and guaranteed to work correctly. Please use at your own risk!
@@ -11,7 +18,7 @@ There are several (mayor) bugs still to fix and functionality to add, so please 
 ```bash
 $ sudo apt-get update
 $ sudo apt-get install python3-dev build-essential
-$ wget https://github.com/bennierex/Python-Navio/archive/master.zip
+$ wget https://github.com/CAVOK-IT/Python-Navio/archive/master.zip
 $ unzip ./master.zip
 $ cd ./Python-Navio-master
 $ python3 setup.py install
