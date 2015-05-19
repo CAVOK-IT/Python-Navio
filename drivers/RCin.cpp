@@ -339,6 +339,7 @@ bool RCin::initialize()
         if (gpioInitialise() >= 0) {
             if (gpioSetMode(_input_gpio, PI_INPUT) == 0) {
                 if (gpioSetPullUpDown(_input_gpio, PI_PUD_DOWN) == 0) {
+                    _scanner->reset();
                     is_initialized = true;
                 }
             }

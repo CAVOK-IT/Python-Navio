@@ -19,7 +19,7 @@ EXT_SOURCE_DIR = os.path.join(SOURCE_DIR, "ext")
 mod = Extension("navio",
                 sources = ["navio.cpp"] + [os.path.join(SOURCE_DIR, src) for src in SOURCE_FILES],
                 include_dirs = [SOURCE_DIR, EXT_SOURCE_DIR],
-                extra_compile_args = ["-std=c++0x", "-DNAVIO_DEBUG"],
+                extra_compile_args = ["-std=c++0x"],
                 extra_link_args=["-lpigpio", "-lrt", "-lpthread"])
 
 setup(name="navio",

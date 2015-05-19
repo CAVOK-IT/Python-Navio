@@ -910,6 +910,28 @@ Navio_PPM_disable(Navio* self)
     return Py_None;
 }
 
+static PyObject *
+Navio_PPM_read(Navio* self)
+{
+    if (!(self->is_initialized && self->ppm)) {
+        PyErr_SetString(PyExc_IOError, "Navio not initialized and/or PPM unavailable.");
+        return NULL;
+    }
+
+    PyObject* channel_data = PyList_New(RCin::OUTDATA_BUFFER_SIZE);
+    if (channel_data) {
+        uint16_t channel_buffer[RCin::OUTDATA_BUFFER_SIZE] = {0};
+
+        self->ppm->readChannels(channel_buffer);
+
+        for (ssize_t i=0; i<RCin::OUTDATA_BUFFER_SIZE; i++) {
+            PyList_SET_ITEM(channel_data, i, PyLong_FromUnsignedLong(channel_buffer[i]));
+        }
+    }
+
+    return channel_data;
+}
+
 // PPM_callback wrapper
 static void
 PPM_callback_wrapper(uint16_t* channel_buffer)
@@ -946,16 +968,16 @@ Navio_PPM_register_callback(Navio* self, PyObject* args)
         return NULL;
     }
 
-    PyObject* temp;
+    PyObject* temp = 0;
 
-    if (!PyArg_ParseTuple(args, "O:PPM_register_callback", &temp)) {
+    if (!PyArg_ParseTuple(args, "|O:PPM_register_callback", &temp)) {
         return NULL;
     }
 
     // Disable PPM reading while we set this up.
     self->ppm->disable();
 
-    if (temp == Py_None) {
+    if (!temp || temp == Py_None) {
         self->ppm->registerCallback(NULL);
         Py_XDECREF(PPM_callback);   /* Dispose of previous callback */
         PPM_callback = 0;
@@ -974,23 +996,6 @@ Navio_PPM_register_callback(Navio* self, PyObject* args)
 
     Py_INCREF(Py_None);
     return Py_None;
-}
-
-static PyObject *
-Navio_PPM_read(Navio* self)
-{
-    PyObject* channel_data = PyList_New(RCin::OUTDATA_BUFFER_SIZE);
-    if (channel_data) {
-        uint16_t channel_buffer[RCin::OUTDATA_BUFFER_SIZE] = {0};
-
-        self->ppm->readChannels(channel_buffer);
-
-        for (ssize_t i=0; i<RCin::OUTDATA_BUFFER_SIZE; i++) {
-            PyList_SET_ITEM(channel_data, i, PyLong_FromUnsignedLong(channel_buffer[i]));
-        }
-    }
-
-    return channel_data;
 }
 // END PPM
 
