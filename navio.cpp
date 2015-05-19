@@ -54,7 +54,7 @@ typedef struct {
     MS5611* baro;   /* baro */
     PCA9685* pwm;   /* PWM  */
     ADS1115* adc;   /* ADC  */
-    MB85RC04* fram; /* FRAM */
+    MB85RCx* fram;  /* FRAM */
     RCin* ppm;      /* PPM  */
 } Navio;
 
@@ -759,7 +759,7 @@ Navio_FRAM_read(Navio* self, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "You can read no more than 127 bytes at a time.");
         return NULL;
     }
-    if ((reg_address + length) > 512) {
+    if ((reg_address + length) > self->fram->getSize()) {
         PyErr_SetString(PyExc_ValueError, "Trying to read beyond FRAM boundary.");
         return NULL;
     }
@@ -803,7 +803,7 @@ Navio_FRAM_write(Navio* self, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "You can write no more than 127 bytes at a time");
         return NULL;
     }
-    if ((reg_address + length) > 512) {
+    if ((reg_address + length) > self->fram->getSize()) {
         PyErr_SetString(PyExc_ValueError, "Data extends beyond FRAM boundary");
         return NULL;
     }
@@ -825,8 +825,8 @@ Navio_FRAM_clear(Navio* self)
         return NULL;
     }
 
-    uint8_t data[64] = {};
-    for (size_t i=1; i<512; i+=64) {
+    uint8_t data[64] = {0};
+    for (size_t i=1; i<self->fram->getSize(); i+=64) {
         if (!self->fram->writeBytes(i-1, 64, data)) {
             PyErr_SetString(PyExc_IOError, "Error clearing FRAM. Possible data corruption occurred!");
             return NULL;
@@ -848,10 +848,10 @@ Navio_FRAM_test(Navio* self)
     bool result = false;
 
     const int length = 9;   // no more than 127!
-    uint16_t reg_address = rand() % (512 - length); // try this at a random memory location
+    uint16_t reg_address = rand() % (self->fram->getSize() - length); // try this at a random memory location
     uint8_t test_data[length] = {0x4E, 0x6F, 0x75, 0x64, 0x26, 0x4C, 0x61, 0x72, 0x73};
-    uint8_t read_data[length] = {};
-    uint8_t tmp[length] = {};
+    uint8_t read_data[length] = {0};
+    uint8_t tmp[length] = {0};
 
     if (self->fram->readBytes(reg_address, length, tmp)) {      // temporarily store the original data
         if (self->fram->writeBytes(reg_address, length, test_data)) {
@@ -1109,21 +1109,20 @@ static PyMethodDef Navio_methods[] = {
 
 static void cleanup(Navio *self)
 {
-    //n = (Navio *)self;
-    // if (self.gps)
-    //     delete self.gps;
-    // if (self.imu)
-    //     delete self.imu;
-    // if (self->baro)
-    //     delete self.baro;
-    // if (self.pwm)
-    //     delete self.pwm;
-    // if (self.adc)
-    //     delete self.adc;
-    // if (self.fram)
-    //     delete self.fram;
-    // if (self.ppm)
-    //     delete self.ppm;
+    if (self->gps)
+        delete self->gps;
+    if (self->imu)
+        delete self->imu;
+    if (self->baro)
+        delete self->baro;
+    if (self->pwm)
+        delete self->pwm;
+    if (self->adc)
+        delete self->adc;
+    if (self->fram)
+        delete self->fram;
+    if (self->ppm)
+        delete self->ppm;
 }
 
 static PyObject *
@@ -1254,7 +1253,18 @@ Navio_init(Navio *self, PyObject *args, PyObject *kwds)
         }
         if ((self->enabled_components & BIT_COMPONENTS_FRAM) != 0) {
             try {
-                self->fram = new MB85RC04(i2c_addr);
+                switch (self->navio_model) {
+                    case NAVIO:
+                    case NAVIO_RAW:
+                        self->fram = new MB85RC04(i2c_addr);
+                        break;
+                    case NAVIO_PLUS:
+                        self->fram = new MB85RC256(i2c_addr);
+                        break;
+                    default:
+                        PyErr_SetString(PyExc_ValueError, "Invalid Navio model specified.");
+                        goto InitErr;
+                }
             }
             catch (std::bad_alloc) {
                 goto AllocErr;

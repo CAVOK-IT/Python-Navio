@@ -44,14 +44,14 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "drivers/Ublox.h"      /* GPS  */
+#include "drivers/Ublox.h"          /* GPS  */
 #include "drivers/Ublox_messages.h"
-#include "drivers/MPU9250.h"    /* IMU  */
-#include "drivers/MS5611.h"     /* baro */
-#include "drivers/PCA9685.h"    /* PWM  */
-#include "drivers/ADS1115.h"    /* ADC  */
-#include "drivers/MB85RC04.h"   /* FRAM */
-#include "drivers/RCin.h"       /* PPM input */
+#include "drivers/MPU9250.h"        /* IMU  */
+#include "drivers/MS5611.h"         /* baro */
+#include "drivers/PCA9685.h"        /* PWM  */
+#include "drivers/ADS1115.h"        /* ADC  */
+#include "drivers/MB85RCx.h"        /* FRAM */
+#include "drivers/RCin.h"           /* PPM input */
 
 
 #define RPI_MODEL_A                   10

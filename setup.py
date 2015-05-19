@@ -11,7 +11,7 @@ SOURCE_FILES = [
     "MS5611.cpp",
     "PCA9685.cpp",
     "ADS1115.cpp",
-    "MB85RC04.cpp",
+    "MB85RCx.cpp",
     "RCin.cpp",
 ]
 EXT_SOURCE_DIR = os.path.join(SOURCE_DIR, "ext")
@@ -23,6 +23,6 @@ mod = Extension("navio",
                 extra_link_args=["-lpigpio", "-lrt", "-lpthread"])
 
 setup(name="navio",
-      version="0.9.1",
+      version="0.9.2",
       description="Python extension for the Navio shield for Raspberry Pi",
       ext_modules=[mod])

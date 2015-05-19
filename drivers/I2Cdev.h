@@ -67,6 +67,7 @@ class I2Cdev {
         static int8_t readByte(const char *i2cDev, uint8_t devAddr, uint8_t regAddr, uint8_t *data, uint16_t timeout=I2Cdev::readTimeout);
         static int8_t readWord(const char *i2cDev, uint8_t devAddr, uint8_t regAddr, uint16_t *data, uint16_t timeout=I2Cdev::readTimeout);
         static int8_t readBytes(const char *i2cDev, uint8_t devAddr, uint8_t regAddr, uint8_t length, uint8_t *data, uint16_t timeout=I2Cdev::readTimeout);
+        static int8_t readBytes(const char *i2cDev, uint8_t devAddr, uint8_t length, uint8_t *data, uint16_t timeout=I2Cdev::readTimeout);
         static int8_t readWords(const char *i2cDev, uint8_t devAddr, uint8_t regAddr, uint8_t length, uint16_t *data, uint16_t timeout=I2Cdev::readTimeout);
 
         static bool writeBit(const char *i2cDev, uint8_t devAddr, uint8_t regAddr, uint8_t bitNum, uint8_t data);
