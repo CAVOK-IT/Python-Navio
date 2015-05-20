@@ -18,9 +18,8 @@ There are several (mayor) bugs still to fix and functionality to add, so please 
 ```bash
 $ sudo apt-get update
 $ sudo apt-get install python3-dev build-essential
-$ wget https://github.com/CAVOK-IT/Python-Navio/archive/master.zip
-$ unzip ./master.zip
-$ cd ./Python-Navio-master
+$ git clone https://github.com/CAVOK-IT/Python-Navio.git
+$ cd ./Python-Navio
 $ python3 setup.py install
 ```
 
@@ -33,6 +32,7 @@ $ python3 setup.py install
 ((0.74267578125, 0.60009765625, -0.2841796875), (5.060975551605225, 0.6097561120986938, -1.8902438879013062))
 
 >>> nio.PWM_set_led(255,0,0)    # set LED to full brightness red
+>>> nio.PWM_set_led()           # LED off
 
 >>> nio.BARO_get_temp_and_press()
 {'press': 999.8275756835938, 'temp': 34.181156158447266}
