@@ -36,7 +36,7 @@ namespace PPMparser
     bool parseFrame(uint16_t* in_data, uint16_t* out_data, uint8_t number_of_channels)
     {
         for (size_t i=0; i<number_of_channels; i++) {
-            out_data[i] = in_data[i];
+            out_data[i] = floor((in_data[i] - OFFSET) * SCALE_FACTOR);
         }
 
         return true;
@@ -106,7 +106,7 @@ void PPMscanner::reset()
     else {
         channels_in_frame = std::min(MAX_CHAN, channels_in_frame);
     }
-    std::fill_n(_buffer, OUT_BUFF_SIZE, 0); // reset output buffer to 0
+    std::fill_n(_buffer, SCANNER_BUFF_SIZE, 0); // reset output buffer to 0
     _chan_num = 0;
     state = Sync;
 }
@@ -176,7 +176,7 @@ void PPMscanner::getRawFrame(uint16_t* out_data)
         return;
     }
 
-    memcpy(out_data, _buffer, (channels_in_frame * sizeof(*_buffer)));
+    std::copy(_buffer, _buffer+channels_in_frame, out_data);
 }
 
 
@@ -194,7 +194,7 @@ SBUSscanner::~SBUSscanner()
 void SBUSscanner::reset()
 {
     std::fill_n(_frame, FRAME_LENGTH, 0);   // reset framebuffer to 0
-    std::fill_n(_buffer, OUT_BUFF_SIZE, 0); // reset output buffer to 0
+    std::fill_n(_buffer, SCANNER_BUFF_SIZE, 0); // reset output buffer to 0
     _byte_num = 0;
     _bit_num = 0;
     state = Sync;
@@ -297,7 +297,7 @@ void SBUSscanner::getRawFrame(uint16_t* out_data)
         return;
     }
 
-    memcpy(out_data, _buffer, (FRAME_LENGTH * sizeof(*_buffer)));
+    std::copy(_buffer, _buffer+FRAME_LENGTH, out_data);
 }
 
 
@@ -328,6 +328,7 @@ RCin::RCin(int scanner_type, bool raw_output, uint8_t gpio_in, uint8_t samplerat
 
 RCin::~RCin()
 {
+    printf("destructing RCin.\n");
     gpioTerminate();
     delete _scanner;
     pthread_mutex_destroy(&outdata_lock);
@@ -365,7 +366,7 @@ void RCin::_feed(int level, uint32_t tick)
     if (scanner_state == BaseScanner::Done) {
         pthread_mutex_lock(&outdata_lock);
             // clear the buffer first
-            memset(_outdata_buff, 0, (OUTDATA_BUFFER_SIZE * sizeof(*_outdata_buff)));
+            std::fill_n(_outdata_buff, OUTDATA_BUFFER_SIZE, 0);
             if (_raw_data_output) {
                 _scanner->getRawFrame(_outdata_buff);
             }
@@ -403,6 +404,6 @@ void RCin::registerCallback(cb_func callback)
 void RCin::readChannels(uint16_t* channel_data)
 {
     pthread_mutex_lock(&outdata_lock);
-        memcpy(channel_data, _outdata_buff, (OUTDATA_BUFFER_SIZE * sizeof(*_outdata_buff)));
+        std::copy(_outdata_buff, _outdata_buff+OUTDATA_BUFFER_SIZE, channel_data);
     pthread_mutex_unlock(&outdata_lock);
 }

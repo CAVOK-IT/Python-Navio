@@ -48,7 +48,7 @@ bool MB85RC04::testConnection()
 {
     // Try to read 16 bytes from a random location
     const uint8_t length = 16;
-    uint16_t reg_address = rand() % (512 - length);
+    uint16_t reg_address = rand() % (getSize() - length);
     uint8_t data[length];
 
     if (readBytes(reg_address, length, data))
@@ -101,7 +101,7 @@ bool MB85RC256::testConnection()
 {
     // Try to read 16 bytes from a random location
     const uint8_t length = 16;
-    uint16_t reg_address = rand() % (32768 - length);
+    uint16_t reg_address = rand() % (getSize() - length);
     uint8_t data[length];
 
     if (readBytes(reg_address, length, data))
@@ -135,7 +135,7 @@ bool MB85RC256::writeBytes(uint16_t register_address, uint8_t length, uint8_t* d
     uint8_t register_address_high = (register_address >> 8) & 0x007F;    // address is 15-bits wide
 
     uint8_t data_buff[length + 1];
-    memcpy(data_buff+1, data, (length * sizeof(*data)));
+    std::copy(data, data+length, data_buff+1);
     data_buff[0] = register_address_low;
 
     return I2Cdev::writeBytes(_i2cDev.c_str(), _device_address, register_address_high, length+1, data_buff);

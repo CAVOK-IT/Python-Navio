@@ -30,14 +30,6 @@
 
 #include "navio.h"
 
-// Exceptions
-static PyObject* InitializationException;
-static PyObject* ConnectionException;
-
-// Callback function pointers
-static PyObject* PPM_callback = 0;
-static PyObject* GPS_callback = 0;
-
 // Typedef
 typedef struct {
     PyObject_HEAD
@@ -57,6 +49,18 @@ typedef struct {
     MB85RCx* fram;  /* FRAM */
     RCin* ppm;      /* PPM  */
 } Navio;
+
+// Exceptions
+static PyObject* InitializationException;
+static PyObject* ConnectionException;
+
+// Callback function pointers
+static PyObject* PPM_callback = 0;
+static PyObject* GPS_callback = 0;
+
+// Global instance pointer
+static Navio* _inst_ptr_self = 0;
+
 
 // BEGIN GPS
 static std::string
@@ -1107,47 +1111,63 @@ static PyMethodDef Navio_methods[] = {
     {NULL}  /* Sentinel */
 };
 
-static void cleanup(Navio *self)
+static void cleanup(Navio* self)
 {
-    if (self->gps)
-        delete self->gps;
-    if (self->imu)
-        delete self->imu;
-    if (self->baro)
-        delete self->baro;
-    if (self->pwm)
-        delete self->pwm;
-    if (self->adc)
-        delete self->adc;
-    if (self->fram)
-        delete self->fram;
-    if (self->ppm)
-        delete self->ppm;
+    if (self) {
+        if (self->gps) {
+            delete self->gps;
+            self->gps = 0;
+        }
+        if (self->imu) {
+            delete self->imu;
+            self->imu = 0;
+        }
+        if (self->baro) {
+            delete self->baro;
+            self->baro = 0;
+        }
+        if (self->pwm) {
+            delete self->pwm;
+            self->pwm = 0;
+        }
+        if (self->adc) {
+            delete self->adc;
+            self->adc = 0;
+        }
+        if (self->fram) {
+            delete self->fram;
+            self->fram = 0;
+        }
+        if (self->ppm) {
+            delete self->ppm;
+            self->ppm = 0;
+        }
+    }
 }
 
 static PyObject *
 Navio_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
-    static Navio *self = 0;  /* static to create a Singleton */
+    //Navio* self = _inst_ptr_self;  /* static to create a Singleton */
 
-    if (!self) {
-        self = (Navio *)type->tp_alloc(type, 0);
+    if (!_inst_ptr_self) {
+        _inst_ptr_self = (Navio *)type->tp_alloc(type, 0);
 
-        self->gps   = 0;
-        self->imu   = 0;
-        self->baro  = 0;
-        self->pwm   = 0;
-        self->adc   = 0;
-        self->fram  = 0;
-        self->ppm   = 0;
+        _inst_ptr_self->gps   = 0;
+        _inst_ptr_self->imu   = 0;
+        _inst_ptr_self->baro  = 0;
+        _inst_ptr_self->pwm   = 0;
+        _inst_ptr_self->adc   = 0;
+        _inst_ptr_self->fram  = 0;
+        _inst_ptr_self->ppm   = 0;
 
-        self->is_initialized = false;
+        _inst_ptr_self->is_initialized = false;
     }
     else {
-        Py_XINCREF(self);
+        Py_INCREF(_inst_ptr_self);
     }
 
-    return (PyObject *)self;
+    return (PyObject *)_inst_ptr_self;
 }
 
 static int
@@ -1157,13 +1177,13 @@ Navio_init(Navio *self, PyObject *args, PyObject *kwds)
 
     self->rpi_model = RPI_MODEL_B_2;
     self->navio_model = NAVIO_PLUS;
-    self->enabled_components = BIT_COMPONENTS_ALL;
     self->rc_input_signal = RC_MODE_PPM;
+    self->enabled_components = BIT_COMPONENTS_ALL;
 
-    static char *kwlist[] = {(char *)"rpi_model", (char *)"navio_model", (char *)"enabled_components", (char *)"rc_input_signal", NULL};
+    static char *kwlist[] = {(char *)"rpi_model", (char *)"navio_model", (char *)"rc_input_signal", (char *)"enabled_components", NULL};
 
     if (self && !self->is_initialized) {
-        if (!PyArg_ParseTupleAndKeywords(args, kwds, "|iiii", kwlist, &self->rpi_model, &self->navio_model, &self->enabled_components, &self->rc_input_signal)) {
+        if (!PyArg_ParseTupleAndKeywords(args, kwds, "|iiii", kwlist, &self->rpi_model, &self->navio_model, &self->rc_input_signal, &self->enabled_components)) {
             return -1;
         }
 
@@ -1329,9 +1349,8 @@ static void
 Navio_dealloc(Navio *self)
 {
     cleanup(self);
+    _inst_ptr_self = 0;
     Py_TYPE(self)->tp_free((PyObject*)self);
-
-    //self = NULL;
 }
 
 static PyTypeObject NavioType = {

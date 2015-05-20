@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -66,7 +67,7 @@ class BaseScanner
     virtual void parseFrame(uint16_t*) = 0;
     virtual void getRawFrame(uint16_t*) = 0;
 
-    static const uint8_t    OUT_BUFF_SIZE   =  25;
+    static const uint8_t    SCANNER_BUFF_SIZE   =  25;
     uint8_t channels_in_frame;
     enum State {
         Sync,
@@ -76,7 +77,7 @@ class BaseScanner
     };
 
   protected:
-    uint16_t _buffer[OUT_BUFF_SIZE];
+    uint16_t _buffer[SCANNER_BUFF_SIZE];
 };
 
 class PPMscanner : public BaseScanner
@@ -90,13 +91,13 @@ class PPMscanner : public BaseScanner
     void parseFrame(uint16_t* out_data);
     void getRawFrame(uint16_t* out_data);
 
-    static const uint8_t    MAX_CHAN          =    8;
+    static const uint8_t    MAX_CHAN            =    8;
     State state;
 
   protected:
-    static const uint16_t   SYNC_PERIOD       = 2700;
-    static const uint16_t   MIN_PULSE_WIDTH   = 1000;
-    static const uint16_t   MAX_PULSE_WIDTH   = 2000;
+    static const uint16_t   SYNC_PERIOD         = 2700;
+    static const uint16_t   MIN_PULSE_WIDTH     = 1000;
+    static const uint16_t   MAX_PULSE_WIDTH     = 2000;
 
     uint32_t _previousTick;
     uint8_t _chan_num;              // channel number in PPM frame
@@ -105,6 +106,11 @@ class PPMscanner : public BaseScanner
 namespace PPMparser
 {
     bool parseFrame(uint16_t* in_data, uint16_t* out_data, uint8_t number_of_channels);
+
+    const uint16_t  OFFSET          = 1000;
+    const uint16_t  RANGE_MIN       = 1000;
+    const uint16_t  RANGE_MAX       = 2000;
+    const double    SCALE_FACTOR    = (2047.5 / (RANGE_MAX - RANGE_MIN));
 }
 
 class SBUSscanner : public BaseScanner

@@ -33,6 +33,7 @@
 #ifndef MB85RCx_H_
 #define MB85RCx_H_
 
+#include <algorithm>
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
